@@ -1219,10 +1219,17 @@ void IncrementalMapper::IterativeGlobalRefinement(
     const bool normalize_reconstruction) {
   CompleteAndMergeTracks(tri_options);
   const size_t num_retriangulated_observations = Retriangulate(tri_options);
+  LOG(INFO) << "Global refinement retriangulated "
+            << num_retriangulated_observations << " observations before "
+            << max_num_refinements << " refinement iterations";
   VLOG(1) << "=> Retriangulated observations: "
           << num_retriangulated_observations;
+  bool terminated_by_threshold = false;
   for (int i = 0; i < max_num_refinements; ++i) {
     const size_t num_observations = reconstruction_->ComputeNumObservations();
+    LOG(INFO) << "Global refinement iteration " << i + 1 << " / "
+              << max_num_refinements << ": running bundle adjustment on "
+              << num_observations << " observations";
     AdjustGlobalBundle(options, ba_options);
     if (normalize_reconstruction && !options.use_prior_position) {
       // Normalize scene for numerical stability and
@@ -1235,10 +1242,25 @@ void IncrementalMapper::IterativeGlobalRefinement(
         num_observations == 0
             ? 0
             : static_cast<double>(num_changed_observations) / num_observations;
+    LOG(INFO) << "Global refinement iteration " << i + 1 << " / "
+              << max_num_refinements << " finished: changed "
+              << num_changed_observations << " / " << num_observations
+              << " observations (" << changed
+              << "), threshold=" << max_refinement_change;
     VLOG(1) << StringPrintf("=> Changed observations: %.6f", changed);
     if (changed < max_refinement_change) {
+      terminated_by_threshold = true;
+      LOG(INFO) << "Global refinement stopping after iteration " << i + 1
+                << " because changed observations ratio " << changed
+                << " is below threshold " << max_refinement_change;
       break;
     }
+  }
+  if (!terminated_by_threshold) {
+    LOG(INFO) << "Global refinement reached maximum iterations ("
+              << max_num_refinements
+              << ") without meeting change threshold "
+              << max_refinement_change;
   }
   ClearModifiedPoints3D();
 }
