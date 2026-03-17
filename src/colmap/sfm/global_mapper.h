@@ -132,8 +132,11 @@ class GlobalMapper {
 
   // Iteratively retriangulate tracks and refine to improve structure.
   bool IterativeRetriangulateAndRefine(
-      const IncrementalTriangulator::Options& options,
+      const IncrementalTriangulator::Options& tri_options,
       const BundleAdjustmentOptions& ba_options,
+      int max_num_refinements,
+      double max_refinement_change,
+      int ba_max_num_iterations,
       double max_normalized_reproj_error,
       double min_tri_angle_deg);
 

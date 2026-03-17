@@ -384,8 +384,11 @@ bool GlobalMapper::IterativeBundleAdjustment(
 }
 
 bool GlobalMapper::IterativeRetriangulateAndRefine(
-    const IncrementalTriangulator::Options& options,
+    const IncrementalTriangulator::Options& tri_options,
     const BundleAdjustmentOptions& ba_options,
+    int max_num_refinements,
+    double max_refinement_change,
+    int ba_max_num_iterations,
     double max_normalized_reproj_error,
     double min_tri_angle_deg) {
   // Delete all existing 3D points and re-establish 2D-3D correspondences.
@@ -397,7 +400,7 @@ bool GlobalMapper::IterativeRetriangulateAndRefine(
 
   // Triangulate all registered images.
   for (const auto image_id : reconstruction_->RegImageIds()) {
-    mapper.TriangulateImage(options, image_id);
+    mapper.TriangulateImage(tri_options, image_id);
   }
 
   // Set up bundle adjustment options for colmap's incremental mapper.
@@ -407,19 +410,19 @@ bool GlobalMapper::IterativeRetriangulateAndRefine(
     custom_ba_options.ceres->solver_options.num_threads =
         ba_options.ceres->solver_options.num_threads;
     custom_ba_options.ceres->solver_options.max_num_iterations =
-        options.retriangulation_ba_max_num_iterations;
+        ba_max_num_iterations;
     custom_ba_options.ceres->solver_options.max_linear_solver_iterations = 100;
   }
 
   // Iterative global refinement.
   IncrementalMapper::Options mapper_options;
-  mapper_options.random_seed = options.random_seed;
+  mapper_options.random_seed = tri_options.random_seed;
   mapper.IterativeGlobalRefinement(
-                                   options.retriangulation_max_refinements,
-                                   options.retriangulation_max_refinement_change,
+                                   max_num_refinements,
+                                   max_refinement_change,
                                    mapper_options,
                                    custom_ba_options,
-                                   options,
+                                   tri_options,
                                    /*normalize_reconstruction=*/true);
 
   mapper.EndReconstruction(/*discard=*/false);
@@ -523,6 +526,9 @@ bool GlobalMapper::Solve(const GlobalMapperOptions& options) {
     run_timer.Start();
     if (!IterativeRetriangulateAndRefine(opts.retriangulation,
                                          opts.bundle_adjustment,
+                                         opts.retriangulation_max_refinements,
+                                         opts.retriangulation_max_refinement_change,
+                                         opts.retriangulation_ba_max_num_iterations,
                                          opts.max_normalized_reproj_error,
                                          opts.min_tri_angle_deg)) {
       return false;
