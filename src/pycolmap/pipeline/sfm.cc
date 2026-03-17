@@ -196,6 +196,10 @@ void BindSfM(py::module& m) {
                            &Opts::max_normalized_reproj_error)
             .def_readwrite("min_tri_angle_deg", &Opts::min_tri_angle_deg)
             .def_readwrite("ba_num_iterations", &Opts::ba_num_iterations)
+            .def_readwrite("retriangulation_max_refinements",
+                           &Opts::retriangulation_max_refinements)
+            .def_readwrite("retriangulation_max_refinement_change",
+                           &Opts::retriangulation_max_refinement_change)
             .def_readwrite("ba_skip_fixed_rotation_stage",
                            &Opts::ba_skip_fixed_rotation_stage)
             .def_readwrite("ba_skip_joint_optimization_stage",

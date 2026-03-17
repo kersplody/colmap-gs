@@ -74,6 +74,8 @@ struct GlobalMapperOptions {
 
   // Control the number of iterations for bundle adjustment.
   int ba_num_iterations = 3;
+  int retriangulation_max_refinements = 5;
+  double retriangulation_max_refinement_change = 0.0005;
 
   // Whether to skip the fixed-rotation stage in bundle adjustment.
   // By default, BA runs in two stages: first with fixed rotations (position

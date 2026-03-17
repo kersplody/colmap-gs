@@ -413,8 +413,9 @@ bool GlobalMapper::IterativeRetriangulateAndRefine(
   // Iterative global refinement.
   IncrementalMapper::Options mapper_options;
   mapper_options.random_seed = options.random_seed;
-  mapper.IterativeGlobalRefinement(/*max_num_refinements=*/5,
-                                   /*max_refinement_change=*/0.0005,
+  mapper.IterativeGlobalRefinement(
+                                   options.retriangulation_max_refinements,
+                                   options.retriangulation_max_refinement_change,
                                    mapper_options,
                                    custom_ba_options,
                                    options,
