@@ -76,6 +76,7 @@ struct GlobalMapperOptions {
   int ba_num_iterations = 3;
   int retriangulation_max_refinements = 5;
   double retriangulation_max_refinement_change = 0.0005;
+  int retriangulation_ba_max_num_iterations = 50;
 
   // Whether to skip the fixed-rotation stage in bundle adjustment.
   // By default, BA runs in two stages: first with fixed rotations (position

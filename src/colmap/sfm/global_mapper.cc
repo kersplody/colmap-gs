@@ -406,7 +406,8 @@ bool GlobalMapper::IterativeRetriangulateAndRefine(
   if (custom_ba_options.ceres && ba_options.ceres) {
     custom_ba_options.ceres->solver_options.num_threads =
         ba_options.ceres->solver_options.num_threads;
-    custom_ba_options.ceres->solver_options.max_num_iterations = 50;
+    custom_ba_options.ceres->solver_options.max_num_iterations =
+        options.retriangulation_ba_max_num_iterations;
     custom_ba_options.ceres->solver_options.max_linear_solver_iterations = 100;
   }
 

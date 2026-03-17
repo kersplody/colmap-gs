@@ -684,6 +684,8 @@ void OptionManager::AddGlobalMapperOptions() {
                    &global_mapper->mapper.retriangulation_max_refinements);
   AddDefaultOption("GlobalMapper.retriangulation_max_refinement_change",
                    &global_mapper->mapper.retriangulation_max_refinement_change);
+  AddDefaultOption("GlobalMapper.retriangulation_ba_max_num_iterations",
+                   &global_mapper->mapper.retriangulation_ba_max_num_iterations);
   AddDefaultOption("GlobalMapper.skip_rotation_averaging",
                    &global_mapper->mapper.skip_rotation_averaging);
   AddDefaultOption("GlobalMapper.skip_track_establishment",

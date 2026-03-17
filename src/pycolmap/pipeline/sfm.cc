@@ -200,6 +200,8 @@ void BindSfM(py::module& m) {
                            &Opts::retriangulation_max_refinements)
             .def_readwrite("retriangulation_max_refinement_change",
                            &Opts::retriangulation_max_refinement_change)
+            .def_readwrite("retriangulation_ba_max_num_iterations",
+                           &Opts::retriangulation_ba_max_num_iterations)
             .def_readwrite("ba_skip_fixed_rotation_stage",
                            &Opts::ba_skip_fixed_rotation_stage)
             .def_readwrite("ba_skip_joint_optimization_stage",
