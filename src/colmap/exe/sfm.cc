@@ -47,6 +47,10 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
+#include <sstream>
+#include <unordered_map>
+#include <unordered_set>
+
 namespace colmap {
 namespace {
 
@@ -76,6 +80,85 @@ void UpdateDatabasePosePriorsCovariance(
     pose_prior.position_covariance = covariance;
     database->UpdatePosePrior(pose_prior);
   }
+}
+
+bool ImportDatabasePosePriorsFromFile(
+    const std::filesystem::path& database_path,
+    const std::filesystem::path& ref_images_path) {
+  auto database = Database::Open(database_path);
+  DatabaseTransaction database_transaction(database.get());
+
+  std::unordered_map<std::string, Image> images_by_name;
+  for (const auto& image : database->ReadAllImages()) {
+    images_by_name.emplace(image.Name(), image);
+  }
+
+  std::unordered_map<data_t, PosePrior> pose_priors_by_data_id;
+  for (const auto& pose_prior : database->ReadAllPosePriors()) {
+    pose_priors_by_data_id.emplace(pose_prior.corr_data_id, pose_prior);
+  }
+
+  std::unordered_set<std::string> seen_image_names;
+  size_t num_written_priors = 0;
+  size_t num_updated_priors = 0;
+  size_t num_skipped_images = 0;
+
+  for (const auto& line : ReadTextFileLines(ref_images_path)) {
+    std::stringstream line_parser(line);
+    std::string image_name;
+    Eigen::Vector3d camera_position;
+    if (!(line_parser >> image_name >> camera_position[0] >> camera_position[1] >>
+          camera_position[2])) {
+      LOG(ERROR) << "Invalid pose prior line in `" << ref_images_path
+                 << "`: " << line;
+      return false;
+    }
+
+    double extra_value = 0.0;
+    if (line_parser >> extra_value) {
+      LOG(ERROR) << "Invalid pose prior line in `" << ref_images_path
+                 << "`: " << line;
+      return false;
+    }
+
+    if (!seen_image_names.insert(image_name).second) {
+      LOG(ERROR) << "Duplicate image name in `" << ref_images_path
+                 << "`: " << image_name;
+      return false;
+    }
+
+    const auto image_it = images_by_name.find(image_name);
+    if (image_it == images_by_name.end()) {
+      LOG(WARNING) << "Skipping pose prior for unknown image: " << image_name;
+      ++num_skipped_images;
+      continue;
+    }
+
+    const Image& image = image_it->second;
+    PosePrior pose_prior;
+    pose_prior.corr_data_id = image.DataId();
+    pose_prior.position = camera_position;
+    pose_prior.coordinate_system = PosePrior::CoordinateSystem::WGS84;
+
+    const auto prior_it = pose_priors_by_data_id.find(image.DataId());
+    if (prior_it != pose_priors_by_data_id.end()) {
+      pose_prior.pose_prior_id = prior_it->second.pose_prior_id;
+      pose_prior.position_covariance = prior_it->second.position_covariance;
+      pose_prior.gravity = prior_it->second.gravity;
+      database->UpdatePosePrior(pose_prior);
+      ++num_updated_priors;
+    } else {
+      pose_prior.pose_prior_id = database->WritePosePrior(pose_prior);
+      ++num_written_priors;
+    }
+  }
+
+  LOG(INFO) << "Imported pose priors from `" << ref_images_path << "`";
+  LOG(INFO) << "  Updated priors:  " << num_updated_priors;
+  LOG(INFO) << "  New priors:      " << num_written_priors;
+  LOG(INFO) << "  Unknown images:  " << num_skipped_images;
+
+  return true;
 }
 
 }  // namespace
@@ -459,6 +542,7 @@ int RunHierarchicalMapper(int argc, char** argv) {
 int RunPosePriorMapper(int argc, char** argv) {
   std::filesystem::path input_path;
   std::filesystem::path output_path;
+  std::filesystem::path ref_images_path;
 
   bool overwrite_priors_covariance = false;
   double prior_position_std_x = 1.;
@@ -470,6 +554,7 @@ int RunPosePriorMapper(int argc, char** argv) {
   options.AddImageOptions();
   options.AddDefaultOption("input_path", &input_path);
   options.AddRequiredOption("output_path", &output_path);
+  options.AddDefaultOption("ref_images_path", &ref_images_path);
   options.AddMapperOptions();
 
   options.mapper->use_prior_position = true;
@@ -492,6 +577,12 @@ int RunPosePriorMapper(int argc, char** argv) {
 
   if (!ExistsDir(output_path)) {
     LOG(ERROR) << "`output_path` is not a directory.";
+    return EXIT_FAILURE;
+  }
+
+  if (!ref_images_path.empty() &&
+      !ImportDatabasePosePriorsFromFile(*options.database_path,
+                                        ref_images_path)) {
     return EXIT_FAILURE;
   }
 
