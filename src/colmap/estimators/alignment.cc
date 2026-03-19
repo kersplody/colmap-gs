@@ -198,19 +198,25 @@ bool AlignReconstructionToLocations(
   std::unordered_set<image_t> common_image_ids;
   std::vector<Eigen::Vector3d> src;
   std::vector<Eigen::Vector3d> dst;
+  size_t num_missing_images = 0;
+  size_t num_images_without_pose = 0;
+  size_t num_duplicate_images = 0;
   for (size_t i = 0; i < tgt_image_names.size(); ++i) {
     const class Image* src_image =
         src_reconstruction.FindImageWithName(tgt_image_names[i]);
     if (src_image == nullptr) {
+      num_missing_images += 1;
       continue;
     }
 
     if (!src_image->HasPose()) {
+      num_images_without_pose += 1;
       continue;
     }
 
     // Ignore duplicate images.
     if (!common_image_ids.insert(src_image->ImageId()).second) {
+      num_duplicate_images += 1;
       continue;
     }
 
@@ -220,6 +226,13 @@ bool AlignReconstructionToLocations(
 
   // Only compute the alignment if there are enough correspondences.
   if (common_image_ids.size() < static_cast<size_t>(min_common_images)) {
+    LOG(WARNING) << "Alignment failed: insufficient usable reference images. "
+                 << "Need at least " << min_common_images << ", but found "
+                 << common_image_ids.size() << " matches with poses out of "
+                 << tgt_image_names.size() << " references (missing="
+                 << num_missing_images
+                 << ", without_pose=" << num_images_without_pose
+                 << ", duplicates=" << num_duplicate_images << ").";
     return false;
   }
 
@@ -228,6 +241,14 @@ bool AlignReconstructionToLocations(
       EstimateSim3dRobust(src, dst, ransac_options, tgt_from_src_);
 
   if (report.support.num_inliers < static_cast<size_t>(min_common_images)) {
+    LOG(WARNING) << "Alignment failed: robust Sim3 estimation found only "
+                 << report.support.num_inliers << " inliers out of "
+                 << src.size() << " usable correspondences with max_error="
+                 << ransac_options.max_error << ", but need at least "
+                 << min_common_images
+                 << ". Reference coordinates may be inconsistent with the "
+                    "reconstruction, use the wrong coordinate system, or "
+                    "require a larger alignment_max_error.";
     return false;
   }
 
