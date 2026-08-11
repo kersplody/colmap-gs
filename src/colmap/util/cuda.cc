@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <iostream>
 
-#include <cuda_runtime.h>
-
 namespace colmap {
 namespace {
 
@@ -52,37 +50,42 @@ bool CompareCudaDevice(const cudaDeviceProp& d1, const cudaDeviceProp& d2) {
 }  // namespace
 
 int GetNumCudaDevices() {
-  int num_cuda_devices;
-  CUDA_SAFE_CALL(cudaGetDeviceCount(&num_cuda_devices));
+  int num_cuda_devices = 0;
+  const cudaError_t error = cudaGetDeviceCount(&num_cuda_devices);
+#ifdef COLMAP_CUDA_ENABLED
+  if (error == cudaErrorNoDevice || error == cudaErrorInsufficientDriver) {
+    return 0;
+  }
+#endif
+  CUDA_SAFE_CALL(error);
   return num_cuda_devices;
+}
+
+int FindBestCudaDevice() {
+  const int num_devices = GetNumCudaDevices();
+  THROW_CHECK_GT(num_devices, 0) << "No CUDA devices available";
+  std::vector<cudaDeviceProp> all_devices(num_devices);
+  std::vector<int> indices(num_devices);
+  for (int id = 0; id < num_devices; ++id) {
+    indices[id] = id;
+    CUDA_SAFE_CALL(cudaGetDeviceProperties(&all_devices[id], id));
+  }
+  std::sort(indices.begin(), indices.end(), [&](int a, int b) {
+    return CompareCudaDevice(all_devices[a], all_devices[b]);
+  });
+  const int selected = indices.front();
+  VLOG(2) << "Found " << num_devices << " CUDA device(s), "
+          << "selected device " << selected << " with name "
+          << all_devices[selected].name;
+  return selected;
 }
 
 void SetBestCudaDevice(const int gpu_index) {
   const int num_cuda_devices = GetNumCudaDevices();
   THROW_CHECK_GT(num_cuda_devices, 0) << "No CUDA devices available";
-
-  int selected_gpu_index = -1;
-  if (gpu_index >= 0) {
-    selected_gpu_index = gpu_index;
-  } else {
-    std::vector<cudaDeviceProp> all_devices(num_cuda_devices);
-    for (int device_id = 0; device_id < num_cuda_devices; ++device_id) {
-      cudaGetDeviceProperties(&all_devices[device_id], device_id);
-    }
-    std::sort(all_devices.begin(), all_devices.end(), CompareCudaDevice);
-    CUDA_SAFE_CALL(cudaChooseDevice(&selected_gpu_index, all_devices.data()));
-    VLOG(2) << "Found " << num_cuda_devices << " CUDA device(s), "
-            << "selected device " << selected_gpu_index << " with name "
-            << all_devices[selected_gpu_index].name;
-  }
-
-  THROW_CHECK_GE(selected_gpu_index, 0);
-  THROW_CHECK_LT(selected_gpu_index, num_cuda_devices)
-      << "Invalid CUDA GPU selected";
-
-  cudaDeviceProp device;
-  cudaGetDeviceProperties(&device, selected_gpu_index);
-  CUDA_SAFE_CALL(cudaSetDevice(selected_gpu_index));
+  const int selected = (gpu_index >= 0) ? gpu_index : FindBestCudaDevice();
+  THROW_CHECK_LT(selected, num_cuda_devices) << "Invalid CUDA GPU selected";
+  CUDA_SAFE_CALL(cudaSetDevice(selected));
 }
 
 }  // namespace colmap

@@ -1,6 +1,7 @@
 #include "colmap/exe/sfm.h"
 
 #include "colmap/controllers/bundle_adjustment.h"
+#include "colmap/controllers/hierarchical_pipeline.h"
 #include "colmap/controllers/incremental_pipeline.h"
 #include "colmap/estimators/view_graph_calibration.h"
 #include "colmap/scene/database.h"
@@ -125,6 +126,30 @@ std::map<size_t, std::shared_ptr<Reconstruction>> GlobalMapping(
   return ReconstructionManagerToMap(reconstruction_manager);
 }
 
+std::map<size_t, std::shared_ptr<Reconstruction>> HierarchicalMapping(
+    const std::filesystem::path& database_path,
+    const std::filesystem::path& image_path,
+    const std::filesystem::path& output_path,
+    HierarchicalPipelineOptions options) {
+  THROW_CHECK_FILE_EXISTS(database_path);
+  THROW_CHECK_DIR_EXISTS(image_path);
+  CreateDirIfNotExists(output_path);
+
+  py::gil_scoped_release release;
+  auto reconstruction_manager = std::make_shared<ReconstructionManager>();
+  auto options_ =
+      std::make_shared<HierarchicalPipelineOptions>(std::move(options));
+  if (!RunHierarchicalMapperImpl(database_path,
+                                 image_path,
+                                 output_path,
+                                 options_,
+                                 reconstruction_manager)) {
+    return {};
+  }
+
+  return ReconstructionManagerToMap(reconstruction_manager);
+}
+
 void BundleAdjustment(const std::shared_ptr<Reconstruction>& reconstruction,
                       const BundleAdjustmentOptions& options) {
   py::gil_scoped_release release;
@@ -169,52 +194,6 @@ void BindSfM(py::module& m) {
                            &Opts::relpose_min_num_inliers)
             .def_readwrite("relpose_min_inlier_ratio",
                            &Opts::relpose_min_inlier_ratio);
-    MakeDataclass(PyOpts);
-  }
-
-  // GlobalMapperOptions
-  {
-    using Opts = GlobalMapperOptions;
-    auto PyOpts =
-        py::classh<Opts>(m, "GlobalMapperOptions")
-            .def(py::init<>())
-            .def_readwrite("num_threads", &Opts::num_threads)
-            .def_readwrite("random_seed", &Opts::random_seed)
-            .def_readwrite("rotation_averaging", &Opts::rotation_averaging)
-            .def_readwrite("global_positioning", &Opts::global_positioning)
-            .def_readwrite("bundle_adjustment", &Opts::bundle_adjustment)
-            .def_readwrite("retriangulation", &Opts::retriangulation)
-            .def_readwrite("track_intra_image_consistency_threshold",
-                           &Opts::track_intra_image_consistency_threshold)
-            .def_readwrite("track_required_tracks_per_view",
-                           &Opts::track_required_tracks_per_view)
-            .def_readwrite("track_min_num_views_per_track",
-                           &Opts::track_min_num_views_per_track)
-            .def_readwrite("max_angular_reproj_error_deg",
-                           &Opts::max_angular_reproj_error_deg)
-            .def_readwrite("max_normalized_reproj_error",
-                           &Opts::max_normalized_reproj_error)
-            .def_readwrite("min_tri_angle_deg", &Opts::min_tri_angle_deg)
-            .def_readwrite("ba_num_iterations", &Opts::ba_num_iterations)
-            .def_readwrite("retriangulation_max_refinements",
-                           &Opts::retriangulation_max_refinements)
-            .def_readwrite("retriangulation_max_refinement_change",
-                           &Opts::retriangulation_max_refinement_change)
-            .def_readwrite("retriangulation_ba_max_num_iterations",
-                           &Opts::retriangulation_ba_max_num_iterations)
-            .def_readwrite("ba_skip_fixed_rotation_stage",
-                           &Opts::ba_skip_fixed_rotation_stage)
-            .def_readwrite("ba_skip_joint_optimization_stage",
-                           &Opts::ba_skip_joint_optimization_stage)
-            .def_readwrite("skip_rotation_averaging",
-                           &Opts::skip_rotation_averaging)
-            .def_readwrite("skip_track_establishment",
-                           &Opts::skip_track_establishment)
-            .def_readwrite("skip_global_positioning",
-                           &Opts::skip_global_positioning)
-            .def_readwrite("skip_bundle_adjustment",
-                           &Opts::skip_bundle_adjustment)
-            .def_readwrite("skip_retriangulation", &Opts::skip_retriangulation);
     MakeDataclass(PyOpts);
   }
 
@@ -269,6 +248,19 @@ void BindSfM(py::module& m) {
       "output_path"_a,
       py::arg_v("options", GlobalPipelineOptions(), "GlobalPipelineOptions()"),
       "Recover 3D points and camera poses using global SfM (GLOMAP)");
+
+  m.def("hierarchical_mapping",
+        &HierarchicalMapping,
+        "database_path"_a,
+        "image_path"_a,
+        "output_path"_a,
+        py::arg_v("options",
+                  HierarchicalPipelineOptions(),
+                  "HierarchicalPipelineOptions()"),
+        "Recover 3D points and unknown camera poses by partitioning the scene "
+        "into overlapping clusters, reconstructing them separately using "
+        "incremental mapping, and merging them into a globally consistent "
+        "reconstruction");
 
   m.def("calibrate_view_graph",
         &ViewGraphCalibration,

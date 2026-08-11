@@ -18,7 +18,6 @@ std::shared_ptr<DatabaseCache> CreateDatabaseCache(const Database& database) {
 }
 
 TEST(GlobalMapper, WithoutNoise) {
-  SetPRNGSeed(1);
   const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
@@ -46,7 +45,6 @@ TEST(GlobalMapper, WithoutNoise) {
 }
 
 TEST(GlobalMapper, WithoutNoiseWithNonTrivialKnownRig) {
-  SetPRNGSeed(1);
   const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
@@ -77,7 +75,6 @@ TEST(GlobalMapper, WithoutNoiseWithNonTrivialKnownRig) {
 }
 
 TEST(GlobalMapper, WithoutNoiseWithNonTrivialUnknownRig) {
-  SetPRNGSeed(1);
   const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
@@ -118,8 +115,6 @@ TEST(GlobalMapper, WithoutNoiseWithNonTrivialUnknownRig) {
 }
 
 TEST(GlobalMapper, WithNoiseAndOutliers) {
-  SetPRNGSeed(1);
-
   const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
@@ -150,6 +145,19 @@ TEST(GlobalMapper, WithNoiseAndOutliers) {
                                  /*max_proj_center_error=*/1e-1,
                                  /*max_scale_error=*/std::nullopt,
                                  /*num_obs_tolerance=*/0.02));
+}
+
+TEST(GlobalMapperOptions, RefineSensorFromRigPropagatesToSubOptions) {
+  GlobalMapperOptions options;
+  options.refine_sensor_from_rig = false;
+  // Sub-options keep their own defaults (true) until accessed.
+  EXPECT_TRUE(options.rotation_averaging.refine_sensor_from_rig);
+  EXPECT_TRUE(options.global_positioning.refine_sensor_from_rig);
+  EXPECT_TRUE(options.bundle_adjustment.refine_sensor_from_rig);
+  // Accessors return resolved sub-options with the top-level flag applied.
+  EXPECT_FALSE(options.RotationAveraging().refine_sensor_from_rig);
+  EXPECT_FALSE(options.GlobalPositioning().refine_sensor_from_rig);
+  EXPECT_FALSE(options.BundleAdjustment().refine_sensor_from_rig);
 }
 
 }  // namespace

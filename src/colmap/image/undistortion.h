@@ -30,6 +30,7 @@
 #pragma once
 
 #include "colmap/geometry/rigid3.h"
+#include "colmap/image/warp.h"
 #include "colmap/scene/reconstruction.h"
 #include "colmap/sensor/bitmap.h"
 
@@ -55,6 +56,18 @@ struct UndistortCameraOptions {
   double roi_min_y = 0.0;
   double roi_max_x = 1.0;
   double roi_max_y = 1.0;
+
+  // Maximum norm of the undistorted camera-space point (= tan(theta) where
+  // theta is the angle from the optical axis) used when tracing border pixels
+  // to compute the output image dimensions. For fisheye cameras with off-center
+  // principal points, border pixels outside the valid fisheye circle can have
+  // theta approaching pi/2, causing tan(theta) to diverge and producing extreme
+  // output dimensions. Points with norm exceeding this threshold are skipped.
+  // Set to -1 to disable the check (default).
+  double max_cam_point_norm = -1;
+
+  // Options controlling image warping during undistortion.
+  WarpImageOptions warp_options;
 };
 
 // Undistort camera by resizing the image and shifting the principal point.

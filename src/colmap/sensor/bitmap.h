@@ -105,7 +105,7 @@ class Bitmap {
 
   // Manipulate individual pixels. For grayscale images, only the red element
   // of the RGB color is used.
-  inline bool GetPixel(int x, int y, BitmapColor<uint8_t>* color) const;
+  inline std::optional<BitmapColor<uint8_t>> GetPixel(int x, int y) const;
   inline bool SetPixel(int x, int y, const BitmapColor<uint8_t>& color);
 
   // Fill entire bitmap with uniform color. For grayscale images, the first
@@ -113,10 +113,10 @@ class Bitmap {
   void Fill(const BitmapColor<uint8_t>& color);
 
   // Interpolate color at given floating point position.
-  bool InterpolateNearestNeighbor(double x,
-                                  double y,
-                                  BitmapColor<uint8_t>* color) const;
-  bool InterpolateBilinear(double x, double y, BitmapColor<float>* color) const;
+  inline std::optional<BitmapColor<uint8_t>> InterpolateNearestNeighbor(
+      double x, double y) const;
+  inline std::optional<BitmapColor<float>> InterpolateBilinear(double x,
+                                                               double y) const;
 
   // Extract EXIF information from bitmap. Returns std::nullopt if no EXIF
   // information is embedded in the bitmap.
@@ -147,6 +147,13 @@ class Bitmap {
   void Rescale(int new_width,
                int new_height,
                RescaleFilter filter = RescaleFilter::kBilinear);
+
+  // Downscale the image in place so that neither dimension exceeds
+  // `max_image_size`, preserving the aspect ratio. Images that already fit
+  // within the bound are left unchanged. Returns the scale factor that was
+  // applied (1 if no rescaling was necessary).
+  double Thumbnail(int max_image_size,
+                   RescaleFilter filter = RescaleFilter::kBilinear);
 
   // Rotate image by k * 90 degrees counter-clockwise.
   void Rot90(int k);
@@ -281,27 +288,21 @@ std::vector<uint8_t>& Bitmap::RowMajorData() { return data_; }
 
 const std::vector<uint8_t>& Bitmap::RowMajorData() const { return data_; }
 
-bool Bitmap::GetPixel(const int x,
-                      const int y,
-                      BitmapColor<uint8_t>* color) const {
+std::optional<BitmapColor<uint8_t>> Bitmap::GetPixel(const int x,
+                                                     const int y) const {
   if (x < 0 || x >= width_ || y < 0 || y >= height_) {
-    return false;
+    return std::nullopt;
   }
 
   if (IsGrey()) {
-    color->r = data_[y * width_ + x];
-    color->g = color->r;
-    color->b = color->r;
-    return true;
+    const uint8_t v = data_[y * width_ + x];
+    return BitmapColor<uint8_t>(v, v, v);
   } else if (IsRGB()) {
     const uint8_t* pixel = &data_[(y * width_ + x) * channels_];
-    color->r = pixel[0];
-    color->g = pixel[1];
-    color->b = pixel[2];
-    return true;
+    return BitmapColor<uint8_t>(pixel[0], pixel[1], pixel[2]);
   }
 
-  return false;
+  return std::nullopt;
 }
 
 bool Bitmap::SetPixel(const int x,
@@ -323,6 +324,68 @@ bool Bitmap::SetPixel(const int x,
   }
 
   return false;
+}
+
+std::optional<BitmapColor<uint8_t>> Bitmap::InterpolateNearestNeighbor(
+    const double x, const double y) const {
+  const int xx = static_cast<int>(std::round(x));
+  const int yy = static_cast<int>(std::round(y));
+  return GetPixel(xx, yy);
+}
+
+std::optional<BitmapColor<float>> Bitmap::InterpolateBilinear(
+    const double x, const double y) const {
+  const int x0 = static_cast<int>(std::floor(x));
+  const int x1 = x0 + 1;
+  const int y0 = static_cast<int>(std::floor(y));
+  const int y1 = y0 + 1;
+
+  if (x0 < 0 || x1 >= width_ || y0 < 0 || y1 >= height_) {
+    return std::nullopt;
+  }
+
+  const double dx = x - x0;
+  const double dy = y - y0;
+  const double dx_1 = 1 - dx;
+  const double dy_1 = 1 - dy;
+
+  const int pitch = width_ * channels_;
+  const uint8_t* line0 = &data_[y0 * pitch];
+  const uint8_t* line1 = &data_[y1 * pitch];
+
+  if (IsGrey()) {
+    // Top row, column-wise linear interpolation.
+    const double v0 = dx_1 * line0[x0] + dx * line0[x1];
+
+    // Bottom row, column-wise linear interpolation.
+    const double v1 = dx_1 * line1[x0] + dx * line1[x1];
+
+    // Row-wise linear interpolation.
+    const float r = dy_1 * v0 + dy * v1;
+    return BitmapColor<float>(r, r, r);
+  } else if (IsRGB()) {
+    const uint8_t* p00 = &line0[3 * x0];
+    const uint8_t* p01 = &line0[3 * x1];
+    const uint8_t* p10 = &line1[3 * x0];
+    const uint8_t* p11 = &line1[3 * x1];
+
+    // Top row, column-wise linear interpolation.
+    const double v0_r = dx_1 * p00[0] + dx * p01[0];
+    const double v0_g = dx_1 * p00[1] + dx * p01[1];
+    const double v0_b = dx_1 * p00[2] + dx * p01[2];
+
+    // Bottom row, column-wise linear interpolation.
+    const double v1_r = dx_1 * p10[0] + dx * p11[0];
+    const double v1_g = dx_1 * p10[1] + dx * p11[1];
+    const double v1_b = dx_1 * p10[2] + dx * p11[2];
+
+    // Row-wise linear interpolation.
+    return BitmapColor<float>(dy_1 * v0_r + dy * v1_r,
+                              dy_1 * v0_g + dy * v1_g,
+                              dy_1 * v0_b + dy * v1_b);
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace colmap
